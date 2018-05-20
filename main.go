@@ -8,16 +8,21 @@ import (
 	"io/ioutil"
 	"log"
 	"fmt"
+	"flag"
 )
 
 const FORMAT = "png"
 const LANG = "heb"
 const DEFAULT_SERC_FOLDER = "pdf"
+const X_RES = 800
+const Y_RES = 600
+const IMAGES = "/images"
+const TEXT = "/text"
 
 func main() {
-	pdfFolder := DEFAULT_SERC_FOLDER
-	imgFolder := pdfFolder + "/images"
-	txtFolder := pdfFolder + "/text"
+	pdfFolder := *flag.String("pdf", DEFAULT_SERC_FOLDER, "path to pdf files")
+	imgFolder := *flag.String("img", pdfFolder+IMAGES, "where to store image files")
+	txtFolder := *flag.String("txt", pdfFolder+TEXT, "where to store txt files")
 
 	pdfs, err := ioutil.ReadDir(pdfFolder)
 	if err != nil {
@@ -25,8 +30,10 @@ func main() {
 	}
 
 	for _, file := range pdfs {
-		if err := ConvertPdfToPng(pdfFolder+"/"+file.Name(), imgFolder+"/"+file.Name(), FORMAT); err != nil {
-			log.Fatal(err)
+		if !file.IsDir() {
+			if err := ConvertPdfToPng(pdfFolder+"/"+file.Name(), imgFolder+"/"+file.Name(), FORMAT); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 
@@ -39,6 +46,7 @@ func main() {
 	}
 
 	for _, file := range images {
+		log.Println("writing ", txtFolder+"/"+file.Name()+".txt")
 		if err := pngToTxt(imgFolder+"/"+file.Name(), txtFolder+"/"+file.Name()+".txt"); err != nil {
 			log.Fatal(err)
 		}
@@ -51,7 +59,7 @@ func ConvertPdfToPng(src string, dst string, format string) error {
 	defer imagick.Terminate()
 	mw := imagick.NewMagickWand()
 	defer mw.Destroy()
-	if err := mw.SetResolution(800, 600); err != nil {
+	if err := mw.SetResolution(X_RES, Y_RES); err != nil {
 		return err
 	}
 	if err := mw.ReadImage(src); err != nil {
@@ -66,14 +74,15 @@ func ConvertPdfToPng(src string, dst string, format string) error {
 	if err := mw.SetFormat(format); err != nil {
 		return err
 	}
-	numberOfPages := int(mw.GetNumberImages())
-	for i := 0; i < numberOfPages; i++ {
-		mw.SetIteratorIndex(i)
-		path := fmt.Sprintf("(%d).", i)
-		err := mw.WriteImage(dst + path + format)
+	flag := true
+	for i := 0; flag; flag = mw.SetIteratorIndex(i) {
+		path := fmt.Sprintf(dst+"(%d)."+format, i)
+		log.Println("writing ", path)
+		err := mw.WriteImage(path)
 		if err != nil {
 			return err
 		}
+		i ++
 	}
 
 	return nil
